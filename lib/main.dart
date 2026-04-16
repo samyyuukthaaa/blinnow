@@ -5,7 +5,6 @@ import 'location_sender_screen.dart';
 import 'location_receiver_screen.dart';
 
 void main() async {
-  // Must be called before Firebase.initializeApp
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
@@ -32,10 +31,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// ─────────────────────────────────────────────────
-/// Role selection — shown first when app opens.
-/// Laptop picks "BUS", phone picks "STUDENT".
-/// ─────────────────────────────────────────────────
 class RoleSelectScreen extends StatelessWidget {
   const RoleSelectScreen({super.key});
 
@@ -50,7 +45,6 @@ class RoleSelectScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // App icon
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
@@ -71,7 +65,6 @@ class RoleSelectScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 32),
-
                 const Text(
                   'BlindBus',
                   style: TextStyle(
@@ -87,7 +80,7 @@ class RoleSelectScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 56),
 
-                // BUS / LAPTOP button
+                // BUS button
                 _RoleButton(
                   icon: Icons.laptop,
                   title: 'I am the BUS',
@@ -102,11 +95,11 @@ class RoleSelectScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // STUDENT / PHONE button
+                // PASSENGER button
                 _RoleButton(
-                  icon: Icons.phone_android,
-                  title: 'I am a STUDENT',
-                  subtitle: 'Receives location & hears ETA',
+                  icon: Icons.accessible_forward,
+                  title: 'I am a PASSENGER',
+                  subtitle: 'Receives bus location & ETA',
                   color: Colors.orange.shade700,
                   onTap: () => Navigator.push(
                     context,
@@ -124,7 +117,6 @@ class RoleSelectScreen extends StatelessWidget {
   }
 }
 
-// ── Reusable big role button ──────────────────────
 class _RoleButton extends StatelessWidget {
   final IconData icon;
   final String title;

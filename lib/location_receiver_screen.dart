@@ -4,14 +4,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
-/// ─────────────────────────────────────────────────────
-/// PHONE / STUDENT SCREEN
-/// • Listens to Firebase  bus/location  in real-time
-/// • Gets this phone's own GPS
-/// • Calculates distance (Haversine) → ETA
-/// • Speaks ETA using flutter_tts
-///   (auto every 30 s  OR  tap "Speak Now")
-/// ─────────────────────────────────────────────────────
 class LocationReceiverScreen extends StatefulWidget {
   const LocationReceiverScreen({super.key});
 
@@ -21,36 +13,28 @@ class LocationReceiverScreen extends StatefulWidget {
 }
 
 class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
-  // ── Firebase ──────────────────────────────────
   final DatabaseReference _dbRef =
       FirebaseDatabase.instance.ref('bus/location');
 
-  // ── TTS ───────────────────────────────────────
   final FlutterTts _tts = FlutterTts();
 
-  // ── Bus data (from Firebase) ──────────────────
   double? _busLat;
   double? _busLng;
   DateTime? _busLastUpdate;
 
-  // ── My location (this phone) ──────────────────
   double? _myLat;
   double? _myLng;
 
-  // ── ETA results ───────────────────────────────
   double? _distanceMeters;
   String _etaText = '';
   String _etaDetail = '';
   String _status = '⏳ Waiting for bus location…';
 
-  // ── Settings ──────────────────────────────────
   bool _voiceOn = true;
   DateTime? _lastSpoken;
 
-  /// Change this to match your real bus speed in km/h
   static const double _busSpeedKmh = 20.0;
 
-  // ─────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
@@ -65,7 +49,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     super.dispose();
   }
 
-  // ── TTS setup ─────────────────────────────────
   Future<void> _setupTts() async {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.47);
@@ -73,7 +56,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     await _tts.setPitch(1.0);
   }
 
-  // ── Get this phone's GPS ──────────────────────
   Future<void> _getMyGps() async {
     setState(() => _status = '📡 Getting your GPS location…');
 
@@ -107,7 +89,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     }
   }
 
-  // ── Listen to Firebase real-time ──────────────
   void _subscribeFirebase() {
     _dbRef.onValue.listen((event) {
       if (!event.snapshot.exists) {
@@ -130,12 +111,10 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     });
   }
 
-  // ── Distance + ETA calculation ────────────────
   void _recalculate() {
     if (_busLat == null || _myLat == null) return;
 
-    final meters =
-        _haversine(_myLat!, _myLng!, _busLat!, _busLng!);
+    final meters = _haversine(_myLat!, _myLng!, _busLat!, _busLng!);
     final km = meters / 1000.0;
     final mins = (km / _busSpeedKmh) * 60.0;
 
@@ -147,15 +126,13 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
       detail = '${meters.round()} m away';
     } else if (mins < 1) {
       eta = 'Less than 1 minute away';
-      detail =
-          '${meters.round()} m — ~${(mins * 60).round()} seconds';
+      detail = '${meters.round()} m — ~${(mins * 60).round()} seconds';
     } else if (mins < 2) {
       eta = 'About 1 minute away';
       detail = '${meters.round()} m away';
     } else {
       eta = 'About ${mins.round()} minutes away';
-      detail =
-          '${km.toStringAsFixed(2)} km at ${_busSpeedKmh.toInt()} km/h';
+      detail = '${km.toStringAsFixed(2)} km at ${_busSpeedKmh.toInt()} km/h';
     }
 
     setState(() {
@@ -167,7 +144,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     _autoSpeak(eta);
   }
 
-  // ── Auto-speak every 30 seconds ───────────────
   Future<void> _autoSpeak(String eta) async {
     if (!_voiceOn) return;
     final now = DateTime.now();
@@ -178,7 +154,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     await _tts.speak('Bus update. $eta');
   }
 
-  // ── Manual speak button ───────────────────────
   Future<void> _speakNow() async {
     await _tts.stop();
     final text = _etaText.isEmpty
@@ -187,9 +162,7 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     await _tts.speak(text);
   }
 
-  // ── Haversine distance (returns metres) ───────
-  double _haversine(
-      double lat1, double lon1, double lat2, double lon2) {
+  double _haversine(double lat1, double lon1, double lat2, double lon2) {
     const R = 6371000.0;
     final dLat = _r(lat2 - lat1);
     final dLon = _r(lon2 - lon1);
@@ -199,17 +172,15 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
   }
 
   double _r(double deg) => deg * pi / 180;
-  String _fmt(DateTime dt) =>
-      dt.toLocal().toString().substring(11, 19);
+  String _fmt(DateTime dt) => dt.toLocal().toString().substring(11, 19);
 
-  // ── UI ────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final bool hasEta = _etaText.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('🚌 STUDENT — Bus ETA'),
+        title: const Text('🚌 PASSENGER — Bus ETA'),
         backgroundColor: Colors.orange.shade700,
         foregroundColor: Colors.white,
         actions: [
@@ -228,10 +199,8 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Status chip ───────────────────
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(12),
@@ -239,29 +208,24 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
               ),
               child: Text(
                 _status,
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w500),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 24),
 
-            // ── Big ETA card ──────────────────
             Card(
               elevation: 6,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20)),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    vertical: 36, horizontal: 24),
+                padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
                 child: Column(
                   children: [
                     Icon(
                       Icons.directions_bus_rounded,
                       size: 80,
-                      color: hasEta
-                          ? Colors.orange.shade600
-                          : Colors.grey.shade400,
+                      color: hasEta ? Colors.orange.shade600 : Colors.grey.shade400,
                     ),
                     const SizedBox(height: 18),
                     Text(
@@ -269,9 +233,7 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
-                        color: hasEta
-                            ? Colors.orange.shade800
-                            : Colors.grey,
+                        color: hasEta ? Colors.orange.shade800 : Colors.grey,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -279,8 +241,7 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _etaDetail,
-                        style: const TextStyle(
-                            fontSize: 14, color: Colors.grey),
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -290,7 +251,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
             ),
             const SizedBox(height: 20),
 
-            // ── Info tiles ────────────────────
             Row(
               children: [
                 Expanded(
@@ -321,13 +281,11 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
               Center(
                 child: Text(
                   'Bus last seen: ${_fmt(_busLastUpdate!)}',
-                  style:
-                      const TextStyle(fontSize: 12, color: Colors.grey),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
             const SizedBox(height: 28),
 
-            // ── Speak Now button ──────────────
             SizedBox(
               height: 52,
               child: ElevatedButton.icon(
@@ -345,7 +303,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
             ),
             const SizedBox(height: 12),
 
-            // ── Refresh my GPS ────────────────
             SizedBox(
               height: 52,
               child: OutlinedButton.icon(
@@ -373,7 +330,6 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
   }
 }
 
-// ── Small info tile widget ────────────────────────
 class _Tile extends StatelessWidget {
   final IconData icon;
   final String label;

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "803214169218",
+    "project_id": "bus-guide-app",
+    "storage_bucket": "bus-guide-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:803214169218:android:ca2da45091361a3834d09b",
+        "android_client_info": {
+          "package_name": "com.example.sam_web_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqe88yXhlxsZQLmlQcc7YmIFdbwdL1Iz8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

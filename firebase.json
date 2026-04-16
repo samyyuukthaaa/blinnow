@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"bus-guide-app","appId":"1:803214169218:android:ca2da45091361a3834d09b","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"bus-guide-app","configurations":{"android":"1:803214169218:android:ca2da45091361a3834d09b","web":"1:803214169218:web:69d8bc8e7c7f0fa634d09b"}}}}}}

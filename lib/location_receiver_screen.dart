@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -18,20 +19,28 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
 
   final FlutterTts _tts = FlutterTts();
 
+  // Bus data
   double? _busLat;
   double? _busLng;
   DateTime? _busLastUpdate;
 
+  // Passenger data
   double? _myLat;
   double? _myLng;
 
+  // ETA / distance
   double? _distanceMeters;
   String _etaText = '';
   String _etaDetail = '';
   String _status = '⏳ Waiting for bus location…';
 
+  // Voice
   bool _voiceOn = true;
   DateTime? _lastSpoken;
+
+  // Streams
+  StreamSubscription<Position>? _posStream;
+  StreamSubscription<DatabaseEvent>? _firebaseSub;
 
   static const double _busSpeedKmh = 20.0;
 
@@ -39,15 +48,19 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
   void initState() {
     super.initState();
     _setupTts();
-    _getMyGps();
+    _startLocationStream();
     _subscribeFirebase();
   }
 
   @override
   void dispose() {
+    _posStream?.cancel();
+    _firebaseSub?.cancel();
     _tts.stop();
     super.dispose();
   }
+
+  // ─── TTS ────────────────────────────────────────────────────────────────────
 
   Future<void> _setupTts() async {
     await _tts.setLanguage('en-US');
@@ -56,7 +69,9 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     await _tts.setPitch(1.0);
   }
 
-  Future<void> _getMyGps() async {
+  // ─── PASSENGER GPS STREAM ───────────────────────────────────────────────────
+
+  Future<void> _startLocationStream() async {
     setState(() => _status = '📡 Getting your GPS location…');
 
     bool serviceOn = await Geolocator.isLocationServiceEnabled();
@@ -75,6 +90,7 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
       return;
     }
 
+    // Get an immediate first fix
     try {
       final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
@@ -87,10 +103,29 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     } catch (e) {
       setState(() => _status = '⚠️ GPS error: $e');
     }
+
+    // Then keep streaming — fires every 10 metres of movement
+    _posStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // update every 10 metres
+      ),
+    ).listen(
+      (pos) {
+        setState(() {
+          _myLat = pos.latitude;
+          _myLng = pos.longitude;
+        });
+        _recalculate();
+      },
+      onError: (e) => setState(() => _status = '⚠️ GPS stream error: $e'),
+    );
   }
 
+  // ─── FIREBASE STREAM ────────────────────────────────────────────────────────
+
   void _subscribeFirebase() {
-    _dbRef.onValue.listen((event) {
+    _firebaseSub = _dbRef.onValue.listen((event) {
       if (!event.snapshot.exists) {
         setState(() => _status = '⚠️ No bus data in Firebase yet.');
         return;
@@ -110,6 +145,8 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
       }
     });
   }
+
+  // ─── DISTANCE + ETA ─────────────────────────────────────────────────────────
 
   void _recalculate() {
     if (_busLat == null || _myLat == null) return;
@@ -162,6 +199,8 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
     await _tts.speak(text);
   }
 
+  // ─── HELPERS ────────────────────────────────────────────────────────────────
+
   double _haversine(double lat1, double lon1, double lat2, double lon2) {
     const R = 6371000.0;
     final dLat = _r(lat2 - lat1);
@@ -173,6 +212,8 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
 
   double _r(double deg) => deg * pi / 180;
   String _fmt(DateTime dt) => dt.toLocal().toString().substring(11, 19);
+
+  // ─── UI ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -199,8 +240,10 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Status bar
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(12),
@@ -208,24 +251,29 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
               ),
               child: Text(
                 _status,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 24),
 
+            // ETA card
             Card(
               elevation: 6,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20)),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                padding: const EdgeInsets.symmetric(
+                    vertical: 36, horizontal: 24),
                 child: Column(
                   children: [
                     Icon(
                       Icons.directions_bus_rounded,
                       size: 80,
-                      color: hasEta ? Colors.orange.shade600 : Colors.grey.shade400,
+                      color: hasEta
+                          ? Colors.orange.shade600
+                          : Colors.grey.shade400,
                     ),
                     const SizedBox(height: 18),
                     Text(
@@ -233,7 +281,9 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
-                        color: hasEta ? Colors.orange.shade800 : Colors.grey,
+                        color: hasEta
+                            ? Colors.orange.shade800
+                            : Colors.grey,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -241,7 +291,8 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _etaDetail,
-                        style: const TextStyle(fontSize: 14, color: Colors.grey),
+                        style: const TextStyle(
+                            fontSize: 14, color: Colors.grey),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -251,12 +302,14 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
             ),
             const SizedBox(height: 20),
 
+            // GPS tiles
             Row(
               children: [
                 Expanded(
                   child: _Tile(
                     icon: Icons.person_pin_circle,
                     label: 'Your GPS',
+                    sublabel: '📡 Live stream',
                     value: _myLat != null
                         ? '${_myLat!.toStringAsFixed(5)}\n${_myLng!.toStringAsFixed(5)}'
                         : 'Not found',
@@ -268,6 +321,7 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
                   child: _Tile(
                     icon: Icons.directions_bus,
                     label: 'Bus GPS',
+                    sublabel: '🔥 Firebase',
                     value: _busLat != null
                         ? '${_busLat!.toStringAsFixed(5)}\n${_busLng!.toStringAsFixed(5)}'
                         : 'No data yet',
@@ -277,15 +331,18 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
               ],
             ),
             const SizedBox(height: 10),
+
             if (_busLastUpdate != null)
               Center(
                 child: Text(
                   'Bus last seen: ${_fmt(_busLastUpdate!)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  style:
+                      const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
             const SizedBox(height: 28),
 
+            // Speak now button
             SizedBox(
               height: 52,
               child: ElevatedButton.icon(
@@ -303,10 +360,14 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
             ),
             const SizedBox(height: 12),
 
+            // Refresh GPS button (restarts the stream)
             SizedBox(
               height: 52,
               child: OutlinedButton.icon(
-                onPressed: _getMyGps,
+                onPressed: () {
+                  _posStream?.cancel();
+                  _startLocationStream();
+                },
                 icon: const Icon(Icons.my_location),
                 label: const Text('Refresh My Location',
                     style: TextStyle(fontSize: 16)),
@@ -319,7 +380,9 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
             const SizedBox(height: 24),
 
             const Text(
-              'Voice auto-announces every 30 seconds.\nTap "Speak ETA Now" to hear it immediately.',
+              '📍 Your location updates every 10 metres automatically.\n'
+              '🔊 Voice auto-announces every 30 seconds.\n'
+              'Tap "Speak ETA Now" to hear it immediately.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
               textAlign: TextAlign.center,
             ),
@@ -330,15 +393,19 @@ class _LocationReceiverScreenState extends State<LocationReceiverScreen> {
   }
 }
 
+// ─── TILE WIDGET ──────────────────────────────────────────────────────────────
+
 class _Tile extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String sublabel;
   final String value;
   final Color color;
 
   const _Tile({
     required this.icon,
     required this.label,
+    required this.sublabel,
     required this.value,
     required this.color,
   });
@@ -355,12 +422,16 @@ class _Tile extends StatelessWidget {
       child: Column(
         children: [
           Icon(icon, color: color, size: 28),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(label,
               style: TextStyle(
                   fontSize: 12,
                   color: color,
                   fontWeight: FontWeight.w600)),
+          Text(sublabel,
+              style: TextStyle(
+                  fontSize: 10,
+                  color: color.withOpacity(0.7))),
           const SizedBox(height: 4),
           Text(
             value,

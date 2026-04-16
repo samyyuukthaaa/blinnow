@@ -1,13 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_database/firebase_database.dart';
 
-/// ─────────────────────────────────────────────
-/// LAPTOP / BUS SCREEN
-/// Gets GPS every 5 seconds → pushes to Firebase
-/// at path:  bus/location  { lat, lng, timestamp }
-/// ─────────────────────────────────────────────
 class LocationSenderScreen extends StatefulWidget {
   const LocationSenderScreen({super.key});
 
@@ -19,20 +13,19 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
   final DatabaseReference _dbRef =
       FirebaseDatabase.instance.ref('bus/location');
 
-  Timer? _timer;
   bool _sending = false;
   int _updateCount = 0;
-  double? _lat;
-  double? _lng;
+  double? _lat, _lng;
   String _status = 'Press Start to begin sending location.';
+
+  dynamic _positionStream;
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _positionStream?.cancel();
     super.dispose();
   }
 
-  // ── Permission check ─────────────────────────
   Future<bool> _requestPermission() async {
     bool serviceOn = await Geolocator.isLocationServiceEnabled();
     if (!serviceOn) {
@@ -40,54 +33,53 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
       return false;
     }
     LocationPermission p = await Geolocator.checkPermission();
-    if (p == LocationPermission.denied) {
-      p = await Geolocator.requestPermission();
-    }
-    if (p == LocationPermission.denied ||
-        p == LocationPermission.deniedForever) {
+    if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
+    if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
       _set('❌ Location permission denied.');
       return false;
     }
     return true;
   }
 
-  // ── Start ────────────────────────────────────
   Future<void> _start() async {
     if (!await _requestPermission()) return;
     setState(() {
       _sending = true;
       _updateCount = 0;
-      _status = 'Starting...';
+      _status = '🔍 Getting first location...';
     });
-    await _push(); // immediate first push
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _push());
+
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 2, // ← fires every 2 meters
+      ),
+    ).listen(
+      (position) => _push(position),
+      onError: (e) => _set('⚠️ GPS Error: $e'),
+    );
   }
 
-  // ── Push one GPS reading to Firebase ─────────
-  Future<void> _push() async {
+  Future<void> _push(position) async {
     try {
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
       await _dbRef.set({
-        'lat': pos.latitude,
-        'lng': pos.longitude,
+        'lat': position.latitude,
+        'lng': position.longitude,
         'timestamp': ServerValue.timestamp,
       });
       setState(() {
-        _lat = pos.latitude;
-        _lng = pos.longitude;
+        _lat = position.latitude;
+        _lng = position.longitude;
         _updateCount++;
-        _status = '✅ Sent update #$_updateCount  (${_now()})';
+        _status = '✅ Sent update #$_updateCount  (${_now()})\n📏 Triggered after ≥2m movement';
       });
     } catch (e) {
-      _set('⚠️ Error: $e');
+      _set('⚠️ Firebase error: $e');
     }
   }
 
-  // ── Stop ─────────────────────────────────────
   void _stop() {
-    _timer?.cancel();
+    _positionStream?.cancel();
     setState(() {
       _sending = false;
       _status = '🛑 Stopped after $_updateCount updates.';
@@ -97,7 +89,6 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
   void _set(String msg) => setState(() => _status = msg);
   String _now() => DateTime.now().toLocal().toString().substring(11, 19);
 
-  // ── UI ───────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,15 +103,27 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // GPS icon pulses green when sending
-              Icon(
-                _sending ? Icons.gps_fixed : Icons.gps_not_fixed,
-                size: 96,
-                color: _sending ? Colors.green : Colors.blue.shade300,
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: Icon(
+                  _sending ? Icons.gps_fixed : Icons.gps_not_fixed,
+                  key: ValueKey(_sending),
+                  size: 96,
+                  color: _sending ? Colors.green : Colors.blue.shade300,
+                ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 8),
+              if (_sending)
+                const Text(
+                  '🔴 LIVE — Updates every 2 meters',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              const SizedBox(height: 20),
 
-              // Status box
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -137,28 +140,39 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Coordinates card
               if (_lat != null)
                 Card(
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
+                  elevation: 4,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                         vertical: 14, horizontal: 24),
                     child: Column(
                       children: [
-                        _coordRow(
-                            Icons.north, 'Latitude', _lat!, Colors.red),
+                        _coordRow(Icons.north, 'Latitude', _lat!, Colors.red),
                         const Divider(height: 16),
-                        _coordRow(Icons.east, 'Longitude', _lng!,
-                            Colors.blue),
+                        _coordRow(Icons.east, 'Longitude', _lng!, Colors.blue),
+                        const Divider(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.upload, size: 18, color: Colors.green),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Total pushes to Firebase: $_updateCount',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                 ),
               const SizedBox(height: 32),
 
-              // Start / Stop button
               SizedBox(
                 width: double.infinity,
                 height: 54,
@@ -182,7 +196,7 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
               ),
               const SizedBox(height: 14),
               const Text(
-                'Pushes to Firebase → bus/location every 5 seconds',
+                '📏 Firebase only updates when bus moves ≥2 meters',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
@@ -193,8 +207,7 @@ class _LocationSenderScreenState extends State<LocationSenderScreen> {
     );
   }
 
-  Widget _coordRow(
-      IconData icon, String label, double value, Color color) {
+  Widget _coordRow(IconData icon, String label, double value, Color color) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
